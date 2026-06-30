@@ -14,4 +14,11 @@ function addNewRowFromTemplate() {
   
   // 「設定」シートの2行目を、本番シートの新行へ「行ごと」丸ごとコピー
   configSheet.getRange("2:2").copyTo(sheet.getRange(nextRow + ":" + nextRow));
+  
+  // B列（日付）とH列（次回作業予定日）の数式を値（実数）に変換して、動的に日付が変わらないようにする
+  var cellB = sheet.getRange(nextRow, 2);
+  cellB.setValue(cellB.getValue());
+  
+  var cellH = sheet.getRange(nextRow, 8);
+  cellH.setValue(cellH.getValue());
 }
