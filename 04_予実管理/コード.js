@@ -40,10 +40,11 @@ function runImport(facilityName) {
   var tempSheet = null;
   
   try {
-    // 1. 9行目から下のA〜P列（16列分）のみをクリア
+    // 1. 9行目から下のすべてのデータが存在する列をクリア
     var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
     if (lastRow >= 9) {
-      sheet.getRange(9, 1, lastRow - 8, 16).clear();
+      sheet.getRange(9, 1, lastRow - 8, lastCol > 0 ? lastCol : 1).clear();
     }
     
     // 2. URL一覧シートから対象施設のURLを検索
@@ -86,7 +87,10 @@ function runImport(facilityName) {
     tempSheet = srcSheet.copyTo(ss);
     
     var srcLastRow = tempSheet.getLastRow();
-    var srcRange = tempSheet.getRange("A1:P" + srcLastRow);
+    var srcLastCol = tempSheet.getLastColumn();
+    
+    // A列の9行目から、データが存在する最終行・最終列までを取得
+    var srcRange = tempSheet.getRange(9, 1, Math.max(1, srcLastRow - 8), Math.max(1, srcLastCol));
     
     // 出力先シートの9行目、1列目（A9セルの位置）を貼り付けの起点にする
     var destRange = sheet.getRange(9, 1);
