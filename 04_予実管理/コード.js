@@ -131,6 +131,43 @@ function runImport(facilityName) {
   var success = false;
   
   try {
+    // 0. 本番シートの既存の行グループ（9行目以降）を Sheets API で一括削除して全クリアする
+    console.log("既存の行グループの一括削除を開始します...");
+    var spreadsheetId = ss.getId();
+    var destSheetId = sheet.getSheetId();
+    
+    var destSheetResponse = Sheets.Spreadsheets.get(spreadsheetId, {
+      ranges: [sheet.getName()],
+      fields: "sheets(rowGroups)"
+    });
+    
+    var existingRowGroups = destSheetResponse.sheets[0].rowGroups || [];
+    var deleteRequests = [];
+    
+    if (existingRowGroups.length > 0) {
+      for (var i = 0; i < existingRowGroups.length; i++) {
+        var group = existingRowGroups[i];
+        // すべての行グループを例外なく全削除（全クリア）する
+        deleteRequests.push({
+          deleteDimensionGroup: {
+            range: {
+              sheetId: destSheetId,
+              dimension: "ROWS",
+              startIndex: group.range.startIndex,
+              endIndex: group.range.endIndex
+            }
+          }
+        });
+      }
+    }
+    
+    if (deleteRequests.length > 0) {
+      Sheets.Spreadsheets.batchUpdate({
+        requests: deleteRequests
+      }, spreadsheetId);
+      console.log("既存の行グループを一括全削除しました。件数: " + deleteRequests.length);
+    }
+    
     // 1. 9行目から下のすべての行を丸ごと削除（値、書式、古い行グループを一発で消去）
     var lastRow = sheet.getLastRow();
     if (lastRow >= 9) {
