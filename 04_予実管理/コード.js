@@ -169,11 +169,10 @@ function runImport(facilityName) {
     }
     
     // 1. 9行目から下のすべての行を丸ごと削除（値、書式、古い行グループを一発で消去）
-    var lastRow = sheet.getLastRow();
-    if (lastRow >= 9) {
-      var maxRows = sheet.getMaxRows();
+    var maxRows = sheet.getMaxRows();
+    if (maxRows >= 9) {
       var freezeRows = sheet.getFrozenRows();
-      var rowsToDelete = lastRow - 8;
+      var rowsToDelete = maxRows - 8; // lastRowではなく、シートの最大行数（maxRows）まで全削除して完全にクリーンアップします
       
       // 削除後の残りの行数が固定行数（通常8行）以下になってしまうのを防ぐため、
       // 削除する行数と同等以上の空行をあらかじめ末尾に挿入して安全マージンを確保します。
@@ -277,6 +276,11 @@ function runImport(facilityName) {
     var srcSs = SpreadsheetApp.openByUrl(targetUrl);
     var srcSheet = srcSs.getSheetByName("シート1") || srcSs.getSheets()[0];
     
+    // 【最重要】コピー元シート自体の最終行（値の存在する本当の最終行）をこの時点で正確に取得します
+    // これにより、一時シートにコピーした後のタイムラグによる行数未同期バグを防ぎます
+    var srcLastRow = srcSheet.getLastRow();
+    console.log("コピー元シートのデータ最終行: " + srcLastRow);
+    
     // 一時コピー用の一意なシート名
     var tempSheetName = "temp_import_" + new Date().getTime();
     
@@ -284,8 +288,6 @@ function runImport(facilityName) {
     tempSheet = srcSheet.copyTo(ss);
     tempSheet.setName(tempSheetName);
     tempSheet.hideSheet(); // 画面上見えないようにする
-    
-    var srcLastRow = tempSheet.getLastRow();
     
     // 一時シートの9行目から最終行までの「行全体」の範囲を取得
     var srcRowRange = tempSheet.getRange("9:" + srcLastRow);
@@ -341,6 +343,18 @@ function runImport(facilityName) {
         requests: requests
       }, spreadsheetId);
       console.log("行グループの一括適用が完了しました。適用件数: " + requests.length);
+    }
+    
+    // 3. 今後の手動編集や拡張を容易にするため、シートの末尾に十分な空行（1000行まで）を確保します
+    var currentMaxRows = sheet.getMaxRows();
+    if (currentMaxRows < 1000) {
+      var rowsToAdd = 1000 - currentMaxRows;
+      sheet.insertRowsAfter(currentMaxRows, rowsToAdd);
+      
+      // 挿入された行が上の行の書式（左端の赤・オレンジの帯など）を引き継いでしまうのを防ぐため、
+      // 追加された空行エリアの書式をすべてクリアして真っ白にします
+      var addedRange = sheet.getRange(currentMaxRows + 1, 1, rowsToAdd, sheet.getMaxColumns());
+      addedRange.clearFormat();
     }
     
     // 完了フラグをセット
