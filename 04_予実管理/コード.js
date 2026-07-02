@@ -7,6 +7,7 @@ function onOpen() {
   // カスタムメニューを追加
   ui.createMenu('カスタム機能')
       .addItem('F3セルの施設データを取り込む', 'runImportFromButton')
+      .addItem('マスタデータを最新化（同期）', 'syncMasterSheet')
       .addItem('キャッシュ（URL）をすべてクリア', 'clearUrlCache')
       .addToUi();
       
@@ -41,6 +42,49 @@ function clearUrlCache() {
     SpreadsheetApp.getUi().alert("キャッシュをクリアしました。（クリア件数: " + clearedCount + "件）\n次回取り込み時に最新のマスタデータからURLを再取得します。");
   } catch (e) {
     SpreadsheetApp.getUi().alert("キャッシュのクリア中にエラーが発生しました:\n" + e.toString());
+  }
+}
+
+// マスタデータを最新化（同期）するユーザー用関数
+function syncMasterSheet() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var success = syncMasterSheetInternal(ss);
+    if (success) {
+      SpreadsheetApp.getUi().alert("マスタデータの同期が完了しました。");
+    } else {
+      SpreadsheetApp.getUi().alert("マスタデータの同期に失敗しました。詳細はログをご確認ください。");
+    }
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("同期中にエラーが発生しました:\n" + e.toString());
+  }
+}
+
+// 内部用同期関数
+function syncMasterSheetInternal(ss) {
+  try {
+    console.log("外部からマスタデータの取得を開始します...");
+    var masterSsUrl = "https://docs.google.com/spreadsheets/d/1PvsAhiLcpI8174QVLBelJFulMPxXvnSCDOJ8B4hZTlU/edit";
+    var masterSs = SpreadsheetApp.openByUrl(masterSsUrl);
+    var srcMasterSheet = masterSs.getSheetByName("各施設リンク先一覧 のコピー");
+    if (!srcMasterSheet) {
+      console.error("外部のマスタシートが見つかりませんでした。");
+      return false;
+    }
+    
+    var destMasterSheet = ss.getSheetByName("マスタ_施設リンク先");
+    if (destMasterSheet) {
+      ss.deleteSheet(destMasterSheet);
+    }
+    
+    destMasterSheet = srcMasterSheet.copyTo(ss);
+    destMasterSheet.setName("マスタ_施設リンク先");
+    destMasterSheet.hideSheet(); // 非表示にする
+    console.log("マスタの同期に成功しました。");
+    return true;
+  } catch (e) {
+    console.error("マスタ同期エラー: " + e.toString());
+    return false;
   }
 }
 
@@ -129,27 +173,56 @@ function runImport(facilityName) {
     
     if (!isCacheValid) {
       console.log("キャッシュが無効または期限切れのため、マスタシートから検索します...");
-      var masterSsUrl = "https://docs.google.com/spreadsheets/d/1PvsAhiLcpI8174QVLBelJFulMPxXvnSCDOJ8B4hZTlU/edit";
-      var masterSs = SpreadsheetApp.openByUrl(masterSsUrl);
-      var masterSheet = masterSs.getSheetByName("各施設リンク先一覧 のコピー");
+      var masterSheet = ss.getSheetByName("マスタ_施設リンク先");
+      
+      // ローカルシートが存在しない場合は、外部から同期する
       if (!masterSheet) {
-        throw new Error("マスタシート「各施設リンク先一覧 のコピー」が見つかりませんでした。");
+        console.log("ローカルマスタシートが存在しないため、外部から同期します...");
+        syncMasterSheetInternal(ss);
+        masterSheet = ss.getSheetByName("マスタ_施設リンク先");
+      }
+      
+      if (!masterSheet) {
+        throw new Error("マスタシート「マスタ_施設リンク先」の作成に失敗しました。");
       }
       
       var masterLastRow = masterSheet.getLastRow();
-      var masterData = masterSheet.getRange(1, 1, masterLastRow, 4).getValues(); // A列〜D列を取得
+      // A列〜D列の値と、D列のRichText（リンク情報）を一括取得
+      var masterData = masterSheet.getRange(1, 1, masterLastRow, 4).getValues();
+      var richTextValues = masterSheet.getRange(1, 4, masterLastRow, 1).getRichTextValues();
       
       // ループで施設名を探す
       for (var i = 0; i < masterData.length; i++) {
         if (masterData[i][1] === facilityName) {
-          var cell = masterSheet.getRange(i + 1, 4); // D列
-          var richText = cell.getRichTextValue();
+          var richText = richTextValues[i][0];
           if (richText) {
             targetUrl = richText.getLinkUrl() || masterData[i][3];
           } else {
             targetUrl = masterData[i][3];
           }
           break;
+        }
+      }
+      
+      // もし施設名が見つからなかった場合、マスタデータが古い可能性があるため、もう一度だけ外部から最新化して再検索する
+      if (!targetUrl || targetUrl === "") {
+        console.log("施設名が見つからなかったため、マスタを強制同期して再検索します...");
+        syncMasterSheetInternal(ss);
+        masterSheet = ss.getSheetByName("マスタ_施設リンク先");
+        masterLastRow = masterSheet.getLastRow();
+        masterData = masterSheet.getRange(1, 1, masterLastRow, 4).getValues();
+        richTextValues = masterSheet.getRange(1, 4, masterLastRow, 1).getRichTextValues();
+        
+        for (var i = 0; i < masterData.length; i++) {
+          if (masterData[i][1] === facilityName) {
+            var richText = richTextValues[i][0];
+            if (richText) {
+              targetUrl = richText.getLinkUrl() || masterData[i][3];
+            } else {
+              targetUrl = masterData[i][3];
+            }
+            break;
+          }
         }
       }
       
@@ -193,12 +266,40 @@ function runImport(facilityName) {
     console.log("行グループの再現処理を開始します...");
     var maxDepth = 0;
     var depths = [];
+    var useSheetsApi = (typeof Sheets !== 'undefined');
     
-    // コピー元シートの9行目から最終行までの行グループの深さをスキャン
-    for (var r = 9; r <= srcLastRow; r++) {
-      var d = tempSheet.getRowGroupDepth(r);
-      depths.push(d);
-      if (d > maxDepth) maxDepth = d;
+    if (useSheetsApi) {
+      try {
+        console.log("Sheets APIを使用して行グループ情報を一括取得します...");
+        var spreadsheetId = ss.getId();
+        var sheetName = tempSheet.getName();
+        // Sheets APIでtempSheetの9行目〜最終行の行メタデータ（depth含む）を一括取得
+        var response = Sheets.Spreadsheets.get(spreadsheetId, {
+          ranges: [sheetName + "!A9:A" + srcLastRow],
+          fields: "sheets(data(rowMetadata(depth)))"
+        });
+        
+        var rowMetadata = response.sheets[0].data[0].rowMetadata;
+        if (rowMetadata) {
+          for (var i = 0; i < rowMetadata.length; i++) {
+            var d = rowMetadata[i].depth || 0;
+            depths.push(d);
+            if (d > maxDepth) maxDepth = d;
+          }
+        }
+      } catch (apiError) {
+        console.error("Sheets APIの実行中にエラーが発生したため、従来方式にフォールバックします: " + apiError.toString());
+        useSheetsApi = false;
+      }
+    }
+    
+    if (!useSheetsApi) {
+      console.warn("【注意】Google Sheets APIが有効化されていないため、低速な従来方式（1行ずつのスキャン）を実行します。さらに高速化するには、GASの「サービス」から「Google Sheets API」を追加してください。");
+      for (var r = 9; r <= srcLastRow; r++) {
+        var d = tempSheet.getRowGroupDepth(r);
+        depths.push(d);
+        if (d > maxDepth) maxDepth = d;
+      }
     }
     
     // 深度1から最大深度まで順番に、連続するグループを検出して適用
