@@ -104,13 +104,13 @@ function runImportFromButton() {
       return;
     }
     
-    // ローディングモーダルを表示
+    // 軽量ローディングモーダルを表示（画面センターに表示されます）
     var template = HtmlService.createTemplateFromFile('loading');
     template.facilityName = facilityName;
     
     var htmlOutput = template.evaluate()
         .setWidth(360)
-        .setHeight(240);
+        .setHeight(220);
         
     SpreadsheetApp.getUi().showModalDialog(htmlOutput, ' ');
     
@@ -134,7 +134,17 @@ function runImport(facilityName) {
     // 1. 9行目から下のすべての行を丸ごと削除（値、書式、古い行グループを一発で消去）
     var lastRow = sheet.getLastRow();
     if (lastRow >= 9) {
-      sheet.deleteRows(9, lastRow - 8);
+      var maxRows = sheet.getMaxRows();
+      var freezeRows = sheet.getFrozenRows();
+      var rowsToDelete = lastRow - 8;
+      
+      // 削除後の残りの行数が固定行数（通常8行）以下になってしまうのを防ぐため、
+      // 削除する行数と同等以上の空行をあらかじめ末尾に挿入して安全マージンを確保します。
+      if (maxRows - rowsToDelete <= freezeRows) {
+        sheet.insertRowsAfter(maxRows, rowsToDelete + 1);
+      }
+      
+      sheet.deleteRows(9, rowsToDelete);
     }
     
     // 2. キャッシュ（PropertiesService）から対象施設のURLを取得（24時間有効）
@@ -246,8 +256,55 @@ function runImport(facilityName) {
     // 本来のシートの9行目の「行全体」を貼り付け先に指定
     var destRowRange = sheet.getRange("9:9");
     
-    // 行全体のコピー＆ペースト（値・数式・書式・行高・行グループが一括コピーされます）
+    // 行全体のコピー＆ペースト（値・数式・書式・行高がコピーされます）
     srcRowRange.copyTo(destRowRange);
+    
+    // スプレッドシートの変更（行の自動追加など）を強制同期させ、Sheets APIに反映します
+    SpreadsheetApp.flush();
+    
+    // Sheets API（v4）を使って、一時シートから本番シートに行グループを一括コピー
+    console.log("Sheets APIを使用して行グループを一括コピーします...");
+    var spreadsheetId = ss.getId();
+    
+    // コピー元（tempSheet）の行グループを取得
+    var response = Sheets.Spreadsheets.get(spreadsheetId, {
+      ranges: [tempSheet.getName()],
+      fields: "sheets(properties(sheetId),rowGroups)"
+    });
+    
+    var tempSheetRowGroups = response.sheets[0].rowGroups || [];
+    var destSheetId = sheet.getSheetId();
+    
+    var requests = [];
+    
+    // 行グループがある場合、本番シートに適用するためのリクエストを作成
+    if (tempSheetRowGroups.length > 0) {
+      for (var i = 0; i < tempSheetRowGroups.length; i++) {
+        var group = tempSheetRowGroups[i];
+        
+        // 9行目（index: 8）以上のグループのみを対象とする
+        if (group.range.startIndex >= 8) {
+          requests.push({
+            addDimensionGroup: {
+              range: {
+                sheetId: destSheetId,
+                dimension: "ROWS",
+                startIndex: group.range.startIndex,
+                endIndex: group.range.endIndex
+              }
+            }
+          });
+        }
+      }
+    }
+    
+    // 一括でリクエストを送信
+    if (requests.length > 0) {
+      Sheets.Spreadsheets.batchUpdate({
+        requests: requests
+      }, spreadsheetId);
+      console.log("行グループの一括適用が完了しました。適用件数: " + requests.length);
+    }
     
     // 完了フラグをセット
     success = true;
