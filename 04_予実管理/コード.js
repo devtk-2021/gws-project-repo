@@ -131,22 +131,10 @@ function runImport(facilityName) {
   var success = false;
   
   try {
-    // 1. 9行目から下のすべてのデータが存在する列をクリア
+    // 1. 9行目から下のすべての行を丸ごと削除（値、書式、古い行グループを一発で消去）
     var lastRow = sheet.getLastRow();
-    var lastCol = sheet.getLastColumn();
     if (lastRow >= 9) {
-      sheet.getRange(9, 1, lastRow - 8, lastCol > 0 ? lastCol : 1).clear();
-      
-      // 既存の古い行グループをすべて解除する（最大8階層分をフラット化）
-      var clearRange = sheet.getRange(9, 1, lastRow - 8, 1);
-      for (var d = 0; d < 8; d++) {
-        try {
-          clearRange.shiftRowGroupDepth(-1);
-        } catch (e) {
-          // これ以上解除できるグループが無い場合はループを抜ける
-          break;
-        }
-      }
+      sheet.deleteRows(9, lastRow - 8);
     }
     
     // 2. キャッシュ（PropertiesService）から対象施設のURLを取得（24時間有効）
@@ -251,83 +239,15 @@ function runImport(facilityName) {
     tempSheet.hideSheet(); // 画面上見えないようにする
     
     var srcLastRow = tempSheet.getLastRow();
-    var srcLastCol = tempSheet.getLastColumn();
     
-    // A列の9行目から、データが存在する最終行・最終列までを取得
-    var srcRange = tempSheet.getRange(9, 1, Math.max(1, srcLastRow - 8), Math.max(1, srcLastCol));
+    // 一時シートの9行目から最終行までの「行全体」の範囲を取得
+    var srcRowRange = tempSheet.getRange("9:" + srcLastRow);
     
-    // 出力先シートの9行目、1列目（A9セルの位置）を貼り付けの起点にする
-    var destRange = sheet.getRange(9, 1);
+    // 本来のシートの9行目の「行全体」を貼り付け先に指定
+    var destRowRange = sheet.getRange("9:9");
     
-    // コピー元の数式・書式・値をすべて丸ごと上書きコピー
-    srcRange.copyTo(destRange);
-    
-    // 4. 行のグループ化情報をコピー元（tempSheet）から取得してコピー先に再現
-    console.log("行グループの再現処理を開始します...");
-    var maxDepth = 0;
-    var depths = [];
-    var useSheetsApi = (typeof Sheets !== 'undefined');
-    
-    if (useSheetsApi) {
-      try {
-        console.log("Sheets APIを使用して行グループ情報を一括取得します...");
-        var spreadsheetId = ss.getId();
-        var sheetName = tempSheet.getName();
-        // Sheets APIでtempSheetの9行目〜最終行の行メタデータ（depth含む）を一括取得
-        var response = Sheets.Spreadsheets.get(spreadsheetId, {
-          ranges: [sheetName + "!A9:A" + srcLastRow],
-          fields: "sheets(data(rowMetadata(depth)))"
-        });
-        
-        var rowMetadata = response.sheets[0].data[0].rowMetadata;
-        if (rowMetadata) {
-          for (var i = 0; i < rowMetadata.length; i++) {
-            var d = rowMetadata[i].depth || 0;
-            depths.push(d);
-            if (d > maxDepth) maxDepth = d;
-          }
-        }
-      } catch (apiError) {
-        console.error("Sheets APIの実行中にエラーが発生したため、従来方式にフォールバックします: " + apiError.toString());
-        useSheetsApi = false;
-      }
-    }
-    
-    if (!useSheetsApi) {
-      console.warn("【注意】Google Sheets APIが有効化されていないため、低速な従来方式（1行ずつのスキャン）を実行します。さらに高速化するには、GASの「サービス」から「Google Sheets API」を追加してください。");
-      for (var r = 9; r <= srcLastRow; r++) {
-        var d = tempSheet.getRowGroupDepth(r);
-        depths.push(d);
-        if (d > maxDepth) maxDepth = d;
-      }
-    }
-    
-    // 深度1から最大深度まで順番に、連続するグループを検出して適用
-    for (var d = 1; d <= maxDepth; d++) {
-      var startIdx = -1;
-      for (var i = 0; i < depths.length; i++) {
-        if (depths[i] >= d) {
-          if (startIdx === -1) {
-            startIdx = i; // グループの始まり
-          }
-        } else {
-          if (startIdx !== -1) {
-            // グループの終了、コピー先に一括適用
-            var startRow = startIdx + 9;
-            var endRow = i - 1 + 9;
-            sheet.getRange(startRow + ":" + endRow).shiftRowGroupDepth(1);
-            startIdx = -1;
-          }
-        }
-      }
-      // ループ終了時にグループが開いたままの場合の適用
-      if (startIdx !== -1) {
-        var startRow = startIdx + 9;
-        var endRow = depths.length - 1 + 9;
-        sheet.getRange(startRow + ":" + endRow).shiftRowGroupDepth(1);
-      }
-    }
-    console.log("行グループの再現処理が完了しました。最大深度: " + maxDepth);
+    // 行全体のコピー＆ペースト（値・数式・書式・行高・行グループが一括コピーされます）
+    srcRowRange.copyTo(destRowRange);
     
     // 完了フラグをセット
     success = true;
