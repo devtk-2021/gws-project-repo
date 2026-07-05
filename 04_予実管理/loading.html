@@ -119,10 +119,16 @@
       var facilityName = document.getElementById('facility-name').innerText;
       document.getElementById('status').innerText = 'データソースを読み込んでいます...';
       
-      google.script.run
+      var functionName = "<?= functionName ?>" || "runImport";
+      var runner = google.script.run
         .withSuccessHandler(onSuccess)
-        .withFailureHandler(onFailure)
-        .runImport(facilityName);
+        .withFailureHandler(onFailure);
+        
+      if (functionName === "runImportSimulation") {
+        runner.runImportSimulation(facilityName);
+      } else {
+        runner.runImport(facilityName);
+      }
     };
 
     function onSuccess() {

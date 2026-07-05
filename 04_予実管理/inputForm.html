@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+      color: #f8fafc;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .col-input {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      /* サジェストボックス基準用 */
+    }
+
+    label {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    select {
+      box-sizing: border-box;
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 0.85rem;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      border-color: #38bdf8;
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
+    select option {
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+
+    /* 読み取り専用の結果表示 */
+    .result-display {
+      background: rgba(56, 189, 248, 0.05) !important;
+      border-color: rgba(56, 189, 248, 0.2) !important;
+      color: #38bdf8 !important;
+      font-weight: 600;
+    }
+
+    /* 実行ボタン */
+    .btn-exec {
+      box-sizing: border-box;
+      height: 38px;
+      padding: 0 24px;
+      background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+      border: none;
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 6px -1px rgba(14, 165, 233, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 90px;
+    }
+
+    .btn-exec:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px -1px rgba(14, 165, 233, 0.3);
+      filter: brightness(1.1);
+    }
+
+    .btn-exec:active {
+      transform: translateY(0);
+    }
+
+    .btn-exec:disabled {
+      background: #475569;
+      color: #94a3b8;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+      filter: none;
+    }
+
+    /* リアルタイム候補表示（サジェストリスト） */
+    .suggest-box {
+      display: none;
+      position: absolute;
+      top: 58px;
+      left: 0;
+      width: 100%;
+      max-height: 130px;
+      overflow-y: auto;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 8px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+    }
+
+    .suggest-item {
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: #cbd5e1;
+      transition: all 0.15s ease;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .suggest-item:last-child {
+      border-bottom: none;
+    }
+
+    .suggest-item:hover,
+    .suggest-item.active {
+      background: rgba(14, 165, 233, 0.8);
+      color: #ffffff;
+      padding-left: 16px;
+    }
+
+    /* ローディング表示 */
+    #loading-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 120px;
+    }
+
+    .spinner-box {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      margin-bottom: 12px;
+    }
+
+    .spinner {
+      box-sizing: border-box;
+      width: 100%;
+      height: 100%;
+      border: 3px solid transparent;
+      border-top-color: #38bdf8;
+      border-bottom-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    }
+
+    .spinner-inner {
+      box-sizing: border-box;
+      position: absolute;
+      top: 10%;
+      left: 10%;
+      width: 80%;
+      height: 80%;
+      border: 3px solid transparent;
+      border-left-color: #ec4899;
+      border-right-color: #ec4899;
+      border-radius: 50%;
+      animation: spin-reverse 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    }
+
+    .status-text {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      animation: pulse 2s infinite ease-in-out;
+      text-align: center;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes spin-reverse {
+      0% {
+        transform: rotate(360deg);
+      }
+
+      100% {
+        transform: rotate(0deg);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 0.6;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container" id="form-container">
+    <!-- 1行目: テキスト入力とプルダウン -->
+    <div class="row">
+      <div class="col-input">
+        <label for="text-input">テキスト入力 (絞り込み)</label>
+        <input type="text" id="text-input" placeholder="検索キーワードを入力..." autocomplete="off">
+        <!-- サジェスト候補リスト -->
+        <div id="suggest-box" class="suggest-box"></div>
+      </div>
+      <div class="col-input">
+        <label for="select-input">プルダウンメニュー</label>
+        <select id="select-input">
+          <option value="">読み込み中...</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 2行目: 検索結果表示と実行ボタン -->
+    <div class="row" style="margin-top: 4px;">
+      <div class="col-input" style="flex: 3;">
+        <label for="result-input">確定された施設名</label>
+        <input type="text" id="result-input" class="result-display" placeholder="選択された施設名がここに表示されます" readonly>
+      </div>
+      <div class="col-input" style="flex: 1; justify-content: flex-end;">
+        <button id="btn-submit" class="btn-exec" disabled>実行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一体型ローディング表示 -->
+  <div id="loading-container">
+    <div class="spinner-box">
+      <div class="spinner"></div>
+      <div class="spinner-inner"></div>
+    </div>
+    <div class="status-text" id="status-message">インポートを開始しています...</div>
+  </div>
+
+  <script>
+    // サーバーからインライン埋め込みされた施設名リスト（非同期読み込みラグなしで即座に使用可能！）
+    var allFacilities = <?!= facilityListJson ?>;
+    var activeSuggestIndex = -1;
+    var currentFilteredList = [];
+
+    // ページロード時に即座にプルダウンを初期化
+    window.onload = function () {
+      populateSelect(allFacilities);
+      document.getElementById('text-input').focus();
+    };
+
+    // プルダウンにデータを設定する関数
+    function populateSelect(list) {
+      var select = document.getElementById('select-input');
+      select.innerHTML = '';
+
+      var optDefault = document.createElement('option');
+      optDefault.value = '';
+      optDefault.text = '-- 施設を選択してください --';
+      select.appendChild(optDefault);
+
+      list.forEach(function (item) {
+        var opt = document.createElement('option');
+        opt.value = item;
+        opt.text = item;
+        select.appendChild(opt);
+      });
+    }
+
+    // 確定値の更新と実行ボタン制御
+    function updateResult(value) {
+      var resultInput = document.getElementById('result-input');
+      var btn = document.getElementById('btn-submit');
+      resultInput.value = value;
+      if (value) {
+        btn.disabled = false;
+      } else {
+        btn.disabled = true;
+      }
+    }
+
+    // 確定選択処理（サジェストやプルダウンから呼ばれる）
+    function selectFacility(facilityName) {
+      document.getElementById('text-input').value = facilityName;
+      document.getElementById('select-input').value = facilityName;
+      updateResult(facilityName);
+      hideSuggest();
+    }
+
+    // サジェスト表示関数
+    function showSuggest(list) {
+      var box = document.getElementById('suggest-box');
+      box.innerHTML = '';
+      currentFilteredList = list;
+      activeSuggestIndex = -1;
+
+      if (list.length === 0) {
+        box.style.display = 'none';
+        return;
+      }
+
+      list.forEach(function (item, index) {
+        var div = document.createElement('div');
+        div.className = 'suggest-item';
+        div.innerText = item;
+        div.addEventListener('click', function () {
+          selectFacility(item);
+        });
+        box.appendChild(div);
+      });
+
+      box.style.display = 'block';
+    }
+
+    // サジェスト非表示関数
+    function hideSuggest() {
+      document.getElementById('suggest-box').style.display = 'none';
+      activeSuggestIndex = -1;
+    }
+
+    // テキスト入力時のリアルタイム曖昧検索とプルダウン連動
+    document.getElementById('text-input').addEventListener('input', function (e) {
+      var query = e.target.value.toLowerCase().trim();
+
+      if (!query) {
+        populateSelect(allFacilities);
+        hideSuggest();
+        updateResult('');
+        return;
+      }
+
+      // 曖昧検索（部分一致）
+      var filtered = allFacilities.filter(function (item) {
+        return item.toLowerCase().indexOf(query) !== -1;
+      });
+
+      // プルダウンの候補を連動して絞り込む
+      populateSelect(filtered);
+
+      // 絞り込んだサジェスト候補を表示
+      showSuggest(filtered);
+
+      // 入力中は自動で結果を確定させず、ユーザーの選択（クリックまたはキー決定）を待つ
+      updateResult('');
+    });
+
+    // キーボード操作への対応（アクセシビリティ向上）
+    document.getElementById('text-input').addEventListener('keydown', function (e) {
+      // 日本語のIME入力中（漢字変換中）のEnterキー等のイベントは無視する
+      if (e.isComposing || e.keyCode === 229) {
+        return;
+      }
+
+      var box = document.getElementById('suggest-box');
+      if (box.style.display !== 'block') return;
+
+      var items = box.getElementsByClassName('suggest-item');
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (activeSuggestIndex < items.length - 1) {
+          if (activeSuggestIndex >= 0) {
+            items[activeSuggestIndex].classList.remove('active');
+          }
+          activeSuggestIndex++;
+          items[activeSuggestIndex].classList.add('active');
+          items[activeSuggestIndex].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (activeSuggestIndex > 0) {
+          items[activeSuggestIndex].classList.remove('active');
+          activeSuggestIndex--;
+          items[activeSuggestIndex].classList.add('active');
+          items[activeSuggestIndex].scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeSuggestIndex >= 0 && activeSuggestIndex < items.length) {
+          selectFacility(currentFilteredList[activeSuggestIndex]);
+        }
+      } else if (e.key === 'Escape') {
+        hideSuggest();
+      }
+    });
+
+    // プルダウン変更時、確定結果欄とテキスト入力欄も連動して更新
+    document.getElementById('select-input').addEventListener('change', function (e) {
+      var val = e.target.value;
+      document.getElementById('text-input').value = val;
+      updateResult(val);
+      hideSuggest();
+    });
+
+    // フォーカスアウト時に少し待ってからサジェストを閉じる（クリックイベントを優先させる）
+    document.getElementById('text-input').addEventListener('blur', function () {
+      setTimeout(hideSuggest, 200);
+    });
+
+    // 実行ボタンのクリックイベント
+    document.getElementById('btn-submit').addEventListener('click', function () {
+      var selectedFacility = document.getElementById('result-input').value;
+      if (!selectedFacility) return;
+
+      // UIをローディング画面へスムーズに切り替え
+      document.getElementById('form-container').style.display = 'none';
+      var loader = document.getElementById('loading-container');
+      loader.style.display = 'flex';
+
+      var statusMsg = document.getElementById('status-message');
+      statusMsg.innerText = selectedFacility + ' のデータ準備中...';
+ 
+      // シミュレーション実行 フェーズ1 呼び出し
+      google.script.run
+        .withSuccessHandler(onPhase1Success)
+        .withFailureHandler(onImportFailure)
+        .runImportSimulationPhase1(selectedFacility);
+    });
+ 
+    function onPhase1Success(result) {
+      document.getElementById('status-message').innerText = '準備が完了しました。反映を開始します...';
+      
+      // ユーザーを待たせずに即座にダイアログを閉じる！
+      setTimeout(function () {
+        google.script.host.close();
+      }, 300);
+      
+      // バックグラウンドでフェーズ2（セルへの上書き転記と後処理）を非同期実行
+      google.script.run
+        .withFailureHandler(function (err) {
+          console.error("バックグラウンド処理エラー:", err.message);
+        })
+        .runImportSimulationPhase2(result);
+    }
+ 
+    function onImportFailure(error) {
+      alert("データ準備中にエラーが発生しました:\n" + error.message);
+      // エラー時はフォーム入力状態に復元
+      document.getElementById('loading-container').style.display = 'none';
+      document.getElementById('form-container').style.display = 'flex';
+    }
+  </script>
+</body>
+
+</html>
